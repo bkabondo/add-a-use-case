@@ -125,6 +125,25 @@ public class StudentService {
         return this.studentRepository.save(oldStudent);
     }
 
+    /**
+     * Deactivate a student: revoke her access while keeping her account, her team, and her submitted weekly activity
+     * reports and peer evaluations. This is what separates deactivation from {@link #deleteStudent}.
+     *
+     * <p>The lookup binds the student to the caller, so a student outside the caller's scope cannot be reached even by
+     * a caller the route rule admits. It mirrors that rule's two arms (BR-student-lifecycle): an instructor assigned to
+     * the student's course section, or the course admin who owns that course section's course. Deactivating an
+     * already-deactivated student is a success, not a conflict: the postcondition is a state, not a transition.
+     */
+    public Student deactivateStudent(Integer studentId) {
+        Integer instructorId = this.userUtils.getUserId();
+        Student student = this.studentRepository.findByIdAndSectionInstructorsId(studentId, instructorId)
+                .or(() -> this.studentRepository.findByIdAndSectionCourseCourseAdminId(studentId, instructorId))
+                .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
+
+        student.setEnabled(false);
+        return this.studentRepository.save(student);
+    }
+
     public void deleteStudent(Integer studentId) {
         this.studentRepository.findById(studentId)
                 .orElseThrow(() -> new ObjectNotFoundException("student", studentId));

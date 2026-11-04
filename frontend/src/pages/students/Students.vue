@@ -35,11 +35,11 @@
       <el-table-column label="Team" prop="teamName"></el-table-column>
       <el-table-column label="Status" prop="enabled">
         <template #default="{ row }">
-          <el-tag type="success" v-if="row.enabled">Enabled</el-tag>
-          <el-tag type="danger" v-else>Disabled</el-tag>
+          <el-tag type="success" v-if="row.enabled">Active</el-tag>
+          <el-tag type="danger" v-else>Deactivated</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="Operations" width="120">
+      <el-table-column label="Operations" width="220">
         <template #default="{ row }">
           <el-button
             icon="Edit"
@@ -48,6 +48,15 @@
             type="primary"
             @click.stop="showEditStudentDialog(row)"
           ></el-button>
+          <el-button
+            v-if="row.enabled"
+            size="small"
+            plain
+            type="danger"
+            @click.stop="confirmDeactivateStudent(row)"
+          >
+            Deactivate
+          </el-button>
         </template>
       </el-table-column>
       <template #empty>
@@ -78,7 +87,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { searchStudents } from '@/apis/student'
+import { deactivateStudent, searchStudents } from '@/apis/student'
 import type {
   SearchStudentByCriteriaResponse,
   Student,
@@ -86,7 +95,7 @@ import type {
 } from '@/apis/student/types'
 import { useSettingsStore } from '@/stores/settings'
 import EditStudentForm from './EditStudentForm.vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const searchCriteria = ref<StudentSearchCriteria>({
   sectionId: NaN,
@@ -127,6 +136,32 @@ async function loadStudents() {
   pageSize.value = result.data.size
   totalElements.value = result.data.totalElements
   loading.value = false
+}
+
+// Warn about the consequences of the deactivation, then ask for confirmation. Cancelling sends no request.
+async function confirmDeactivateStudent(student: Student) {
+  try {
+    await ElMessageBox.confirm(
+      `${student.firstName} ${student.lastName} will no longer be able to log in or submit weekly activity reports and peer evaluations. The account, the team assignment, and all previously submitted work are kept, and the account can be reactivated later. This is not a deletion.`,
+      'Deactivate this student?',
+      {
+        confirmButtonText: 'Deactivate',
+        cancelButtonText: 'Cancel',
+        type: 'warning'
+      }
+    )
+  } catch {
+    return // The course admin or instructor cancelled at the confirmation.
+  }
+
+  try {
+    const result = await deactivateStudent(student.id as number)
+    // The response reports the resulting state, so this reads true whether or not it was already deactivated.
+    ElMessage.success(`${result.data.firstName} ${result.data.lastName} is now deactivated.`)
+  } catch {
+    // Refused (extension 6b) or failed; the shared request interceptor has already surfaced the error.
+  }
+  loadStudents() // Reload either way, so a row left over from a stale list stops reading Active.
 }
 
 function resetSearchCriteria() {

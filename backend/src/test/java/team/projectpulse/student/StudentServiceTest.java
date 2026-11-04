@@ -5,6 +5,8 @@ import team.projectpulse.instructor.Instructor;
 import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.UserUtils;
+import team.projectpulse.system.exception.ObjectNotFoundException;
+import team.projectpulse.team.Team;
 import team.projectpulse.user.MyUserPrincipal;
 import team.projectpulse.user.userinvitation.UserInvitationService;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -175,6 +178,88 @@ class StudentServiceTest {
         assertThat(result.getEmail()).isEqualTo(update.getEmail());
 //        assertThat(result.getRoles()).isEqualTo(update.getRoles());
         assertThat(result.isEnabled()).isEqualTo(update.isEnabled());
+    }
+
+    @Test
+    void testDeactivateStudentSuccess() {
+        // Given
+        Student john = this.students.get(0);
+        Section section = new Section();
+        Team team = new Team("Team1", "Team 1 description", "https://www.team1.com");
+        john.setSection(section);
+        john.setTeam(team);
+
+        given(this.userUtils.getUserId()).willReturn(2);
+        given(this.studentRepository.findByIdAndSectionInstructorsId(1, 2)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(any(Student.class))).willReturn(john);
+
+        // When
+        Student result = this.studentService.deactivateStudent(1);
+
+        // Then
+        assertThat(result.isEnabled()).isFalse();
+        // Deactivation writes nothing but the account state.
+        assertThat(result.getUsername()).isEqualTo("john");
+        assertThat(result.getFirstName()).isEqualTo("John");
+        assertThat(result.getLastName()).isEqualTo("Smith");
+        assertThat(result.getEmail()).isEqualTo("j.smith@abc.edu");
+        assertThat(result.getTeam()).isSameAs(team);
+        assertThat(result.getSection()).isSameAs(section);
+        verify(this.studentRepository, times(1)).save(john);
+    }
+
+    @Test
+    void testDeactivateAlreadyDeactivatedStudent() {
+        // Given
+        Student john = this.students.get(0);
+        john.setEnabled(false); // Already deactivated, e.g., by another instructor since this student was displayed.
+
+        given(this.userUtils.getUserId()).willReturn(2);
+        given(this.studentRepository.findByIdAndSectionInstructorsId(1, 2)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(any(Student.class))).willReturn(john);
+
+        // When
+        Student result = this.studentService.deactivateStudent(1);
+
+        // Then
+        assertThat(result.isEnabled()).isFalse(); // Idempotent: no exception, the account stays deactivated.
+        // Pins that the service still goes through the save rather than returning early on an already-deactivated
+        // account, which is the only thing this fixture can assert that the main-flow test does not already cover.
+        verify(this.studentRepository, times(1)).save(john);
+    }
+
+    @Test
+    void testDeactivateStudentAsCourseAdminNotAssignedToSection() {
+        // Given: the caller owns the student's course but is not among her section's instructors, so only the
+        // course-admin arm of the scope resolves her (BR-student-lifecycle, BR-section-scoped-access).
+        Student john = this.students.get(0);
+        john.setSection(new Section());
+
+        given(this.userUtils.getUserId()).willReturn(3);
+        given(this.studentRepository.findByIdAndSectionInstructorsId(1, 3)).willReturn(Optional.empty());
+        given(this.studentRepository.findByIdAndSectionCourseCourseAdminId(1, 3)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(any(Student.class))).willReturn(john);
+
+        // When
+        Student result = this.studentService.deactivateStudent(1);
+
+        // Then
+        assertThat(result.isEnabled()).isFalse();
+        verify(this.studentRepository, times(1)).save(john);
+    }
+
+    @Test
+    void testDeactivateStudentNotFound() {
+        // Given: neither arm of the scope resolves her, so she is outside the caller's scope or does not exist.
+        given(this.userUtils.getUserId()).willReturn(2);
+        given(this.studentRepository.findByIdAndSectionInstructorsId(99, 2)).willReturn(Optional.empty());
+        given(this.studentRepository.findByIdAndSectionCourseCourseAdminId(99, 2)).willReturn(Optional.empty());
+
+        // When and then
+        assertThatThrownBy(() -> this.studentService.deactivateStudent(99))
+                .isInstanceOf(ObjectNotFoundException.class)
+                .hasMessage("Could not find student with Id 99 :(");
+        verify(this.studentRepository, never()).save(any(Student.class));
     }
 
     @Test

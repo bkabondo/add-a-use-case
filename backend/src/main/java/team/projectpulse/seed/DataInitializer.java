@@ -258,6 +258,18 @@ public class DataInitializer implements CommandLineRunner {
 
         course3.addSection(section3);
 
+        // Section4 is staffed by an instructor who is not its course admin: Tim owns course3 but assigned Bill Gates
+        // to teach this course section. BR-section-scoped-access still scopes Tim to it, by course ownership rather
+        // than section assignment, so this is the fixture for the course-admin arm of UC-STU-deactivate-student.
+        Section section4 = new Section("EE Capstone 2025", LocalDate.of(2024, 8, 12), LocalDate.of(2025, 4, 28), true, DayOfWeek.MONDAY, LocalTime.of(23, 59), DayOfWeek.TUESDAY, LocalTime.of(23, 59));
+        section4.addInstructor(instructor2);
+
+        Student dana = new Student("d.fisher@abc.edu", "Dana", "Fisher", "d.fisher@abc.edu", "123456", true, "student");
+        dana.setPassword(this.passwordEncoder.encode(dana.getPassword()));
+        section4.addStudent(dana); // Not assigned to a team: a course section's students are assigned to teams later
+
+        course3.addSection(section4);
+
         // Step 3: Save all courses (which will cascade to sections, criteria, rubrics, teams, and students)
         this.courseRepository.saveAll(List.of(course1, course2, course3));
 

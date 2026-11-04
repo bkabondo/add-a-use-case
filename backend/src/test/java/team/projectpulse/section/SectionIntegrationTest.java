@@ -144,7 +144,9 @@ class SectionIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.flag").value(true))
                 .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
                 .andExpect(jsonPath("$.message").value("Find sections successfully"))
-                .andExpect(jsonPath("$.data.content", Matchers.hasSize(1)));
+                // Tim's course3 now seeds a second course section, staffed by another instructor, as the fixture for
+                // the course-admin arm of UC-STU-deactivate-student. Her search spans the courses she owns either way.
+                .andExpect(jsonPath("$.data.content", Matchers.hasSize(2)));
     }
 
     @Test
