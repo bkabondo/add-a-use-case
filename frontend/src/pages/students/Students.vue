@@ -154,10 +154,14 @@ async function confirmDeactivateStudent(student: Student) {
     return // The course admin or instructor cancelled at the confirmation.
   }
 
-  const result = await deactivateStudent(student.id as number)
-  // The response reports the resulting state, so this reads true whether or not it was already deactivated.
-  ElMessage.success(`${result.data.firstName} ${result.data.lastName} is now deactivated.`)
-  loadStudents()
+  try {
+    const result = await deactivateStudent(student.id as number)
+    // The response reports the resulting state, so this reads true whether or not it was already deactivated.
+    ElMessage.success(`${result.data.firstName} ${result.data.lastName} is now deactivated.`)
+  } catch {
+    // Refused (extension 6b) or failed; the shared request interceptor has already surfaced the error.
+  }
+  loadStudents() // Reload either way, so a row left over from a stale list stops reading Active.
 }
 
 function resetSearchCriteria() {

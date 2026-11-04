@@ -39,9 +39,7 @@ export const updateStudent = (updatedStudent: Student) =>
   )
 
 export const deactivateStudent = (id: number) =>
-  request.put<any, DeactivateStudentResponse>(
-    `${API.STUDENTS_ENDPOINT}/${id}/deactivation`
-  )
+  request.put<any, DeactivateStudentResponse>(`${API.STUDENTS_ENDPOINT}/${id}/deactivation`)
 
 export const deleteStudent = (id: number) =>
   request.delete<any, DeleteStudentResponse>(`${API.STUDENTS_ENDPOINT}/${id}`)

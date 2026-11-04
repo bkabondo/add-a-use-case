@@ -223,6 +223,9 @@ class StudentServiceTest {
 
         // Then
         assertThat(result.isEnabled()).isFalse(); // Idempotent: no exception, the account stays deactivated.
+        // Pins that the service still goes through the save rather than returning early on an already-deactivated
+        // account, which is the only thing this fixture can assert that the main-flow test does not already cover.
+        verify(this.studentRepository, times(1)).save(john);
     }
 
     @Test
