@@ -207,6 +207,9 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.PUT, this.baseUrl + "/students/{studentId}").access(this.userOwnershipAuthorizationManager)
                         .requestMatchers(HttpMethod.DELETE, this.baseUrl + "/students/{studentId}").access(this.userOwnershipAuthorizationManager)
                         .requestMatchers(HttpMethod.GET, this.baseUrl + "/students/teams/{teamId}").access(this.teamMembershipAuthorizationManager)
+                        // Deactivation admits only an instructor of the student's section, never the student herself,
+                        // so it does not reuse the userOwnershipAuthorizationManager the generic update route uses.
+                        .requestMatchers(HttpMethod.PUT, this.baseUrl + "/students/{studentId}/deactivation").access(this.studentInstructorAuthorizationManager)
 
                         // Security rules for the /activities/** endpoint.
                         .requestMatchers(HttpMethod.POST, this.baseUrl + "/activities/search").authenticated()
