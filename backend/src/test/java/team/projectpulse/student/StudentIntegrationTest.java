@@ -304,6 +304,20 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void testDeactivateAlreadyDeactivatedStudentIsIdempotent() throws Exception {
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(true));
+
+        // Reachable from a stale list: a second request reports the resulting state rather than a conflict.
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.message").value("Deactivate student successfully"))
+                .andExpect(jsonPath("$.data.enabled").value(false))
+                .andExpect(jsonPath("$.data.teamName").value("Team1"));
+    }
+
+    @Test
     void testDeactivatedStudentCannotLogIn() throws Exception {
         this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
                 .andExpect(jsonPath("$.flag").value(true));

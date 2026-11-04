@@ -154,6 +154,7 @@ No scheduled job. No existing endpoint changes. The new path does **not** collid
 | UC-STU-deactivate-student, ext. 3a — a student calls it on another student | integration | `403` |
 | UC-STU-deactivate-student, ext. 3a — a student calls it on herself | integration | `403` — the self branch the generic update route allows is absent here |
 | UC-STU-deactivate-student, ext. 6a — already deactivated | unit | idempotent: the account stays deactivated, no exception |
+| UC-STU-deactivate-student, ext. 6a — already deactivated, end to end | integration | a second request returns `200` / `flag:true` with the account deactivated and the team unchanged, not a conflict — **added during `/implement`**: the unit row above stays green even if the state write is deleted, so nothing pinned the endpoint's idempotence |
 | UC-STU-deactivate-student, ext. 6b — no such student | integration | `403` — the guard fails closed before the service runs |
 | UC-STU-deactivate-student, ext. 6b — defence in depth at the service | unit | `ObjectNotFoundException` |
 | UC-STU-deactivate-student, ext. 4a — the actor cancels | not automated | client-only reject path; the foundation areas carry no frontend automated tests |
