@@ -330,6 +330,39 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void testCourseAdminTimDeactivatesStudentInASectionSheIsNotAssignedTo() throws Exception {
+        // Tim owns course3 but staffed section4 with Bill Gates, so she is not among its instructors. BR-student-lifecycle
+        // admits her anyway: a course admin is scoped by course ownership (BR-section-scoped-access).
+        this.mockMvc.perform(put(this.baseUrl + "/students/21/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminTimToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.message").value("Deactivate student successfully"))
+                .andExpect(jsonPath("$.data.id").value(21))
+                .andExpect(jsonPath("$.data.email").value("d.fisher@abc.edu"))
+                .andExpect(jsonPath("$.data.enabled").value(false));
+    }
+
+    @Test
+    void testAssignedInstructorDeactivatesStudentInACourseSheDoesNotOwn() throws Exception {
+        // The other arm of the same rule: Bill Gates teaches section4 without owning course3.
+        this.mockMvc.perform(put(this.baseUrl + "/students/21/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.data.id").value(21))
+                .andExpect(jsonPath("$.data.enabled").value(false));
+    }
+
+    @Test
+    void testUnrelatedAdminDeactivatesStudentInACourseSheNeitherOwnsNorTeaches() throws Exception {
+        // Widening to course ownership must not admit an admin of some other course: Bingyang owns course1 and course2.
+        this.mockMvc.perform(put(this.baseUrl + "/students/21/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
+                .andExpect(jsonPath("$.message").value("No permission."))
+                .andExpect(jsonPath("$.data").value("Access Denied"));
+    }
+
+    @Test
     void testAdminTimDeactivatesStudentInAnotherSection() throws Exception {
         // Tim is an instructor of section 3 only; John is in section 2 (BR-section-scoped-access).
         this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminTimToken))
