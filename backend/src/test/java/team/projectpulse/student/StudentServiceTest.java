@@ -5,6 +5,8 @@ import team.projectpulse.instructor.Instructor;
 import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.UserUtils;
+import team.projectpulse.system.exception.ObjectNotFoundException;
+import team.projectpulse.team.Team;
 import team.projectpulse.user.MyUserPrincipal;
 import team.projectpulse.user.userinvitation.UserInvitationService;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -175,6 +178,64 @@ class StudentServiceTest {
         assertThat(result.getEmail()).isEqualTo(update.getEmail());
 //        assertThat(result.getRoles()).isEqualTo(update.getRoles());
         assertThat(result.isEnabled()).isEqualTo(update.isEnabled());
+    }
+
+    @Test
+    void testDeactivateStudentSuccess() {
+        // Given
+        Student john = this.students.get(0);
+        Section section = new Section();
+        Team team = new Team("Team1", "Team 1 description", "https://www.team1.com");
+        john.setSection(section);
+        john.setTeam(team);
+
+        given(this.userUtils.getUserId()).willReturn(2);
+        given(this.studentRepository.findByIdAndSectionInstructorsId(1, 2)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(any(Student.class))).willReturn(john);
+
+        // When
+        Student result = this.studentService.deactivateStudent(1);
+
+        // Then
+        assertThat(result.isEnabled()).isFalse();
+        // Deactivation writes nothing but the account state.
+        assertThat(result.getUsername()).isEqualTo("john");
+        assertThat(result.getFirstName()).isEqualTo("John");
+        assertThat(result.getLastName()).isEqualTo("Smith");
+        assertThat(result.getEmail()).isEqualTo("j.smith@abc.edu");
+        assertThat(result.getTeam()).isSameAs(team);
+        assertThat(result.getSection()).isSameAs(section);
+        verify(this.studentRepository, times(1)).save(john);
+    }
+
+    @Test
+    void testDeactivateAlreadyDeactivatedStudent() {
+        // Given
+        Student john = this.students.get(0);
+        john.setEnabled(false); // Already deactivated, e.g., by another instructor since this student was displayed.
+
+        given(this.userUtils.getUserId()).willReturn(2);
+        given(this.studentRepository.findByIdAndSectionInstructorsId(1, 2)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(any(Student.class))).willReturn(john);
+
+        // When
+        Student result = this.studentService.deactivateStudent(1);
+
+        // Then
+        assertThat(result.isEnabled()).isFalse(); // Idempotent: no exception, the account stays deactivated.
+    }
+
+    @Test
+    void testDeactivateStudentNotFound() {
+        // Given
+        given(this.userUtils.getUserId()).willReturn(2);
+        given(this.studentRepository.findByIdAndSectionInstructorsId(99, 2)).willReturn(Optional.empty());
+
+        // When and then
+        assertThatThrownBy(() -> this.studentService.deactivateStudent(99))
+                .isInstanceOf(ObjectNotFoundException.class)
+                .hasMessage("Could not find student with Id 99 :(");
+        verify(this.studentRepository, never()).save(any(Student.class));
     }
 
     @Test
