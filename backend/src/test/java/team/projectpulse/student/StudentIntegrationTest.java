@@ -288,6 +288,73 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
 //    }
 
     @Test
+    void testInstructorBillDeactivatesStudentInOwnSection() throws Exception {
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.message").value("Deactivate student successfully"))
+                .andExpect(jsonPath("$.data.id").value(4))
+                .andExpect(jsonPath("$.data.enabled").value(false))
+                // Deactivation keeps the account and its team; only deletion removes them.
+                .andExpect(jsonPath("$.data.username").value("j.smith@abc.edu"))
+                .andExpect(jsonPath("$.data.firstName").value("John"))
+                .andExpect(jsonPath("$.data.lastName").value("Smith"))
+                .andExpect(jsonPath("$.data.email").value("j.smith@abc.edu"))
+                .andExpect(jsonPath("$.data.teamName").value("Team1"));
+    }
+
+    @Test
+    void testDeactivatedStudentCannotLogIn() throws Exception {
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(true));
+
+        // POST-1 has teeth: her credentials are still valid, but the account is no longer active.
+        this.mockMvc.perform(post(this.baseUrl + "/users/login").with(httpBasic("j.smith@abc.edu", "123456")))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.UNAUTHORIZED))
+                .andExpect(jsonPath("$.message").value("User account is abnormal."));
+    }
+
+    @Test
+    void testAdminTimDeactivatesStudentInAnotherSection() throws Exception {
+        // Tim is an instructor of section 3 only; John is in section 2 (BR-section-scoped-access).
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminTimToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
+                .andExpect(jsonPath("$.message").value("No permission."))
+                .andExpect(jsonPath("$.data").value("Access Denied"));
+    }
+
+    @Test
+    void testStudentJohnDeactivatesAnotherStudent() throws Exception {
+        this.mockMvc.perform(put(this.baseUrl + "/students/5/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
+                .andExpect(jsonPath("$.message").value("No permission."))
+                .andExpect(jsonPath("$.data").value("Access Denied"));
+    }
+
+    @Test
+    void testStudentJohnDeactivatesHerself() throws Exception {
+        // The self branch the generic update route allows is absent here: only an instructor may deactivate.
+        this.mockMvc.perform(put(this.baseUrl + "/students/4/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
+                .andExpect(jsonPath("$.message").value("No permission."))
+                .andExpect(jsonPath("$.data").value("Access Denied"));
+    }
+
+    @Test
+    void testDeactivateNonExistentStudent() throws Exception {
+        // The guard fails closed before the service runs, so an id that names nothing is a 403, not a 404.
+        this.mockMvc.perform(put(this.baseUrl + "/students/9999/deactivation").accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.adminToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
+                .andExpect(jsonPath("$.message").value("No permission."))
+                .andExpect(jsonPath("$.data").value("Access Denied"));
+    }
+
+    @Test
     void testStudentJohnFindStudentsInOwnTeam() throws Exception {
         // When and then
         this.mockMvc.perform(get(this.baseUrl + "/students/teams/1").contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
