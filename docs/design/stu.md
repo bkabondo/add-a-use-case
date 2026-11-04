@@ -44,6 +44,7 @@ classDiagram
     class StudentRepository {
         <<reused, student>>
         +findByIdAndSectionInstructorsId(studentId, instructorId) Optional «new»
+        +findByIdAndSectionCourseCourseAdminId(studentId, courseAdminId) Optional «new»
     }
     class Student {
         <<reused, student>>
@@ -57,27 +58,33 @@ classDiagram
     class StudentSecurityService {
         <<reused, student>>
         +isCurrentUserInstructorOfStudentSection(studentId) boolean
+        +isCurrentUserCourseAdminOfStudentSection(studentId) boolean «new»
     }
     class StudentInstructorAuthorizationManager {
         <<reused, security>>
     }
+    class StudentCourseAdminAuthorizationManager {
+        <<new, security>>
+    }
     class SecurityConfiguration {
         <<reused, security>>
-        route rule for the new path «new»
+        route rule for the new path, anyOf the two guards «new»
     }
     Student --|> PeerEvaluationUser
     StudentController --> StudentService
     StudentService --> StudentRepository
     StudentRepository --> Student
     SecurityConfiguration --> StudentInstructorAuthorizationManager
+    SecurityConfiguration --> StudentCourseAdminAuthorizationManager
     StudentInstructorAuthorizationManager --> StudentSecurityService
+    StudentCourseAdminAuthorizationManager --> StudentSecurityService
     StudentSecurityService --> StudentRepository
 ```
 
 | Layer | File | Role |
 |---|---|---|
 | Route rule | [`security/SecurityConfiguration.java`](../../backend/src/main/java/team/projectpulse/security/SecurityConfiguration.java) | binds the new path to the guard below |
-| Guard | [`StudentInstructorAuthorizationManager`](../../backend/src/main/java/team/projectpulse/security/authorizationmanagers/StudentInstructorAuthorizationManager.java) → [`StudentSecurityService`](../../backend/src/main/java/team/projectpulse/student/StudentSecurityService.java) | reused unchanged; already guards the instructor-only peer-evaluation detail route |
+| Guard | `anyOf(`[`StudentInstructorAuthorizationManager`](../../backend/src/main/java/team/projectpulse/security/authorizationmanagers/StudentInstructorAuthorizationManager.java)`, `[`StudentCourseAdminAuthorizationManager`](../../backend/src/main/java/team/projectpulse/security/authorizationmanagers/StudentCourseAdminAuthorizationManager.java)`)` → [`StudentSecurityService`](../../backend/src/main/java/team/projectpulse/student/StudentSecurityService.java) | the first is reused unchanged (it already guards the instructor-only peer-evaluation detail route); the second is new, and the security service gains its predicate |
 | Backend slice | [`StudentController`](../../backend/src/main/java/team/projectpulse/student/StudentController.java) → [`StudentService`](../../backend/src/main/java/team/projectpulse/student/StudentService.java) → [`StudentRepository`](../../backend/src/main/java/team/projectpulse/student/StudentRepository.java) / [`Student`](../../backend/src/main/java/team/projectpulse/student/Student.java) | one method each; `StudentDto` and its converters unchanged |
 | Frontend | [`pages/students/Students.vue`](../../frontend/src/pages/students/Students.vue) → [`apis/student`](../../frontend/src/apis/student/index.ts) | the Deactivate control, its confirmation, and the status column |
 
@@ -90,7 +97,7 @@ sequenceDiagram
     actor Actor as course admin / instructor
     participant UI as Students.vue
     participant Api as apis/student
-    participant Guard as StudentInstructorAuthorizationManager
+    participant Guard as anyOf(StudentInstructor, StudentCourseAdmin)
     participant Ctl as StudentController
     participant Svc as StudentService
     participant Repo as StudentRepository
@@ -100,11 +107,11 @@ sequenceDiagram
     Actor->>UI: confirms (step 5)
     UI->>Api: deactivateStudent(studentId)
     Api->>Guard: PUT /students/{studentId}/deactivation
-    Guard->>Guard: isCurrentUserInstructorOfStudentSection(studentId)
-    Guard--xApi: 403 — caller is not an instructor of her course section, or no such student (ext. 3a, 6b)
+    Guard->>Guard: isCurrentUserInstructorOfStudentSection or isCurrentUserCourseAdminOfStudentSection
+    Guard--xApi: 403 — caller neither teaches her course section nor owns its course, or no such student (ext. 3a, 6b)
     Guard->>Ctl: authorized
     Ctl->>Svc: deactivateStudent(studentId)
-    Svc->>Repo: findByIdAndSectionInstructorsId(studentId, callerId)
+    Svc->>Repo: findByIdAndSectionInstructorsId, else findByIdAndSectionCourseCourseAdminId
     Repo-->>Svc: Student — empty throws ObjectNotFoundException (404)
     Svc->>Svc: set the account deactivated; already deactivated is a no-op (ext. 6a)
     Svc->>Repo: save
@@ -118,7 +125,7 @@ Steps 4 and 5 are client-only: the warning and the cancel path (ext. 4a) never r
 
 | Endpoint or job | Caller (who may) | Request | Success | Errors, by extension |
 |---|---|---|---|---|
-| `PUT /students/{studentId}/deactivation` | an instructor or course admin listed on that student's course section (`StudentInstructorAuthorizationManager`) — never the student herself | no body | `200` `Result(true, SUCCESS, "Deactivate student successfully", StudentDto)`, the DTO reporting the account deactivated | `403` ext. 3a (caller is a student, or an instructor of another course section) and ext. 6b (`studentId` names no row — the guard fails closed before the service runs); `404` if the scoped query finds nothing; ext. 6a (already deactivated) is **not** an error — see Key decisions |
+| `PUT /students/{studentId}/deactivation` | an instructor assigned to that student's course section, or the course admin who owns its course (`anyOf(StudentInstructorAuthorizationManager, StudentCourseAdminAuthorizationManager)`) — never the student herself | no body | `200` `Result(true, SUCCESS, "Deactivate student successfully", StudentDto)`, the DTO reporting the account deactivated | `403` ext. 3a (caller is a student, or an instructor of another course section) and ext. 6b (`studentId` names no row — the guard fails closed before the service runs); `404` if the scoped query finds nothing; ext. 6a (already deactivated) is **not** an error — see Key decisions |
 
 No scheduled job. No existing endpoint changes. The new path does **not** collide with the existing `PUT /students/{studentId}` rule — `{studentId}` matches one path segment, so `/students/4/deactivation` reaches only the new rule — but like every API rule it must sit above the `.denyAll()` catch-all.
 
@@ -129,7 +136,8 @@ No scheduled job. No existing endpoint changes. The new path does **not** collid
 - **Deactivating an already-deactivated student is a success, not a conflict.** The use case's postcondition is a state, not a transition, and the only way to reach the case is a stale list. *Rejected:* `409 CONFLICT` — invents an error no requirement asks for and makes a retry after a dropped response fail. **The cost of that choice, found in implementation:** success and ext. 6a are indistinguishable in the response — both report the account deactivated — so the SPA cannot announce "was already deactivated" as ext. 6a1 words it. It instead reports the *resulting state* ("… is now deactivated"), which is true either way. Distinguishing them would need the server to say which it did, and no requirement asks the actor to be told the difference.
 - **The service's scope check is `findByIdAndSectionInstructorsId(studentId, callerId)`.** This is the second enforcement point required by [Authorization](architectural-design.md#authorization), and it has to bind the object to the *caller* — her id read from `UserUtils`, never from `SecurityContextHolder` — and not to a course section read from anywhere else: `UserUtils.getUserSectionId()` returns the caller's **default** course section, which is not necessarily this student's, so scoping by it would refuse a student in another course section the same instructor teaches. The derived finder binds both in one query, following the `findByIdAndTeamTeamId` precedent. *Rejected:* an unscoped `findById` followed by a comparison (the shape [`backend/CLAUDE.md`](../../backend/CLAUDE.md) names as the smell to grep for), and trusting the route rule alone.
 - **Deactivation writes nothing but the account state.** Team membership and the student's weekly activity reports and peer evaluations are left untouched — that is what separates this use case from UC-STU-delete-student. *Rejected:* also unassigning her from her team, which would strip the team context from her existing weekly-activity-report history and change what instructor reports show for past weeks.
-- **The actor set is inherited, not re-derived.** The guard is the same predicate that already governs `GET` and `PUT /students/{studentId}`, so this route admits exactly the actors UC-STU-view-student admits, less the student herself. It rests on a provisioning invariant: **a course admin must be listed among the instructors of the course sections she owns** (as `seed/DataInitializer` seeds her), because the predicate resolves the student's course section and looks for the caller in its instructor list. An admin not so listed is refused — the same class of provisioning invariant the architecture-of-record already records for the `roles` string under [Authorization](architectural-design.md#authorization). *Rejected:* widening the predicate to course ownership, which would add a second notion of who may reach a student and desynchronize this route from the rest of the area.
+- **The actor set is both arms of BR-student-lifecycle: an instructor assigned to the student's course section, or the course admin who owns that course section's course.** The two enforcement points widen together and say the same thing: the route rule is `AuthorizationManagers.anyOf(studentInstructorAuthorizationManager, studentCourseAdminAuthorizationManager)`, following the `/sections/{sectionId}/submission-status` precedent ("either one alone would shut out the other"), and the service falls back to a course-admin-scoped finder when the instructor-scoped one misses. *Rejected:* admitting a course admin at the route but leaving the service scoped to assigned instructors only — the guard would admit her and the service would then answer `404`.
+  - **Revised during `/implement` (2026-11-04).** This design originally *inherited* the single section-instructor predicate from `GET`/`PUT /students/{studentId}` and rested on a provisioning invariant: a course admin must be listed among the instructors of the course sections she owns, as `seed/DataInitializer` seeds her. A fresh-context review found that **nothing maintains that invariant** — `SectionService.saveSection` never adds the creating admin to the course section's instructor list — so an admin who staffed a course section with another instructor was refused on her own student, contradicting BR-student-lifecycle and BR-section-scoped-access (which scopes an admin by course *ownership*, not section assignment). *Also rejected:* keeping the narrow predicate and enforcing the invariant at provisioning instead, which would leave the contradiction live until that code changed and gives the SPA no way to surface it.
 
 ## Data model
 
@@ -137,7 +145,7 @@ No scheduled job. No existing endpoint changes. The new path does **not** collid
 
 ## Reuse & cross-cutting
 
-- **Authorization** — both enforcement points are existing machinery: the route rule in `SecurityConfiguration` plus the reused guard/security-service pair, and a team-or-section-scoped repository query in the service.
+- **Authorization** — both enforcement points use existing machinery, and both carry the same two-arm predicate: the route rule in `SecurityConfiguration` composes the reused `StudentInstructorAuthorizationManager` with a new `StudentCourseAdminAuthorizationManager` through `AuthorizationManagers.anyOf`, and the service's section-scoped repository query falls back to a course-ownership-scoped one. The new manager is a thin wrapper over `StudentSecurityService`, like every other guard in `authorizationmanagers/`; it adds no subsystem.
 - **Authentication (FR-SEC-active-account)** — nothing to build for the login half: `MyUserPrincipal.isEnabled()` feeds Spring Security directly, so a deactivated student's next login is refused with no extra code. See Open questions for the half that *is* missing.
 - **BR-submission-owed** — already filters on the account state ([`SubmissionStatusService.findOwedItems`](../../backend/src/main/java/team/projectpulse/notification/SubmissionStatusService.java)), so a deactivated student stops being reminded and stops being a teammate her peers must evaluate. **The NOT area needs no change**, and this design adds no test there; `SubmissionStatusServiceIntegrationTest` already covers a deactivated account.
 - **No email.** The use case notifies only the actor, and `CI-email-notifications` lists no account-lifecycle mail, so `EmailService` is not involved.
@@ -151,6 +159,9 @@ No scheduled job. No existing endpoint changes. The new path does **not** collid
 | UC-STU-deactivate-student, main success scenario, end to end | integration | `200` / `flag:true`, message `Deactivate student successfully`, the DTO reports the account deactivated, the team unchanged |
 | UC-STU-deactivate-student, postcondition POST-1 has teeth (FR-SEC-active-account) | integration | after deactivation, HTTP Basic login with her still-valid credentials is refused |
 | UC-STU-deactivate-student, ext. 3a — student in another course section (BR-section-scoped-access) | integration | `403`, `No permission.` |
+| UC-STU-deactivate-student, main success scenario — the course-admin arm (BR-student-lifecycle) | unit + integration | the course admin who owns the course but is not assigned to the course section succeeds; needs a seeded course section staffed by someone else |
+| UC-STU-deactivate-student, main success scenario — the assigned-instructor arm, in a course she does not own | integration | succeeds: the two arms are independent |
+| UC-STU-deactivate-student, ext. 3a — an admin of another course entirely | integration | `403` — widening to course ownership must not admit any admin |
 | UC-STU-deactivate-student, ext. 3a — a student calls it on another student | integration | `403` |
 | UC-STU-deactivate-student, ext. 3a — a student calls it on herself | integration | `403` — the self branch the generic update route allows is absent here |
 | UC-STU-deactivate-student, ext. 6a — already deactivated | unit | idempotent: the account stays deactivated, no exception |
