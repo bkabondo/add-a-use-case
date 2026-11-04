@@ -229,10 +229,31 @@ class StudentServiceTest {
     }
 
     @Test
+    void testDeactivateStudentAsCourseAdminNotAssignedToSection() {
+        // Given: the caller owns the student's course but is not among her section's instructors, so only the
+        // course-admin arm of the scope resolves her (BR-student-lifecycle, BR-section-scoped-access).
+        Student john = this.students.get(0);
+        john.setSection(new Section());
+
+        given(this.userUtils.getUserId()).willReturn(3);
+        given(this.studentRepository.findByIdAndSectionInstructorsId(1, 3)).willReturn(Optional.empty());
+        given(this.studentRepository.findByIdAndSectionCourseCourseAdminId(1, 3)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(any(Student.class))).willReturn(john);
+
+        // When
+        Student result = this.studentService.deactivateStudent(1);
+
+        // Then
+        assertThat(result.isEnabled()).isFalse();
+        verify(this.studentRepository, times(1)).save(john);
+    }
+
+    @Test
     void testDeactivateStudentNotFound() {
-        // Given
+        // Given: neither arm of the scope resolves her, so she is outside the caller's scope or does not exist.
         given(this.userUtils.getUserId()).willReturn(2);
         given(this.studentRepository.findByIdAndSectionInstructorsId(99, 2)).willReturn(Optional.empty());
+        given(this.studentRepository.findByIdAndSectionCourseCourseAdminId(99, 2)).willReturn(Optional.empty());
 
         // When and then
         assertThatThrownBy(() -> this.studentService.deactivateStudent(99))

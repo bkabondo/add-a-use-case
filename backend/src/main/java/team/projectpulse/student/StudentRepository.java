@@ -18,4 +18,8 @@ public interface StudentRepository extends JpaRepository<Student, Integer>, JpaS
     // Load a student by id and bind her to an instructor of her section in one query, so a caller can only reach a
     // student in a section she is assigned to (BR-section-scoped-access).
     Optional<Student> findByIdAndSectionInstructorsId(Integer studentId, Integer instructorId);
+
+    // The course-admin half of the same scope: an admin is bound to the student by owning her section's course, not by
+    // being assigned to the section (BR-section-scoped-access, BR-role-based-access).
+    Optional<Student> findByIdAndSectionCourseCourseAdminId(Integer studentId, Integer courseAdminId);
 }
