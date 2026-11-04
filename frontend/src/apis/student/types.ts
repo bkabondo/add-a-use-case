@@ -96,6 +96,13 @@ export interface UpdateStudentResponse {
   data: Student
 }
 
+export interface DeactivateStudentResponse {
+  flag: boolean
+  code: number
+  message: string
+  data: Student // Reports the resulting account state, not the transition
+}
+
 export interface DeleteStudentResponse {
   flag: boolean
   code: number
