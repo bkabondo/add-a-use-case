@@ -1473,9 +1473,18 @@ Details:
 7. Use case ends.
 
 **Extensions:**
+- 3a. The student is not in a course section the course admin or instructor is assigned to.
+  - 3a1. The system refuses the request, and the use case ends (BR-section-scoped-access).
+- 4a. The course admin or instructor cancels at the confirmation.
+  - 4a1. The system makes no change, and the use case ends.
+- 6a. The student has already been deactivated, for example by another instructor since this student was displayed.
+  - 6a1. The system makes no further change, alerts the course admin or instructor that this student is deactivated, and the use case ends.
+- 6b. The student no longer exists in the system.
+  - 6b1. The system refuses the request, and the use case ends.
+
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
-**Business Rules:** BR-student-lifecycle
+**Business Rules:** BR-student-lifecycle, BR-section-scoped-access
 
 **Associated Information:**
 - Consequence of the deactivation: The student will no longer be able to log in or submit weekly activity reports and peer evaluations, but the student's account and her previously submitted work are kept in the system. Deactivation will NOT remove the student from the system, and the account can be reactivated in the future (UC-STU-reactivate-student: Reactivate a student). This is distinct from deletion (UC-STU-delete-student: Delete a student), which is a physical, unrecoverable delete. The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
